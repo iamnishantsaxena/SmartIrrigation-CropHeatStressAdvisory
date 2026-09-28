@@ -10,25 +10,33 @@
 <body>
   <header>
     <h1>Shamba Water</h1>
-    <p>Irrigation &amp; crop heat stress advisory · JKUAT station, Juja · <span id="asof"></span></p>
+    <p>Irrigation &amp; crop heat stress advisory · JKUAT station, Juja · <span id="source" class="badge"></span></p>
   </header>
 
+  <form id="range" class="range">
+    <label>From <input type="date" id="start" required></label>
+    <label>To <input type="date" id="end" required></label>
+    <button type="submit">Show</button>
+    <span class="hint">Up to 30 days</span>
+  </form>
+
   <main>
-    <section class="today" aria-label="Latest day">
+    <section class="today" aria-label="Latest day in range">
+      <h2 id="asof">Latest day</h2>
       <div class="advice" id="advice">Loading…</div>
       <div class="metrics">
         <div class="metric"><span>Irrigation</span><strong id="m-irr">–</strong></div>
         <div class="metric"><span>Heat stress</span><strong id="m-heat">–</strong></div>
         <div class="metric"><span>Rainfall</span><strong id="m-rain">–</strong></div>
-        <div class="metric"><span>Water deficit</span><strong id="m-def">–</strong></div>
+        <div class="metric"><span>Soil deficit</span><strong id="m-def">–</strong></div>
       </div>
     </section>
 
     <section>
-      <h2>7-day irrigation schedule</h2>
+      <h2>7-day irrigation schedule <small>(last 7 days of range)</small></h2>
       <div class="table-wrap">
         <table>
-          <thead><tr><th>Date</th><th>Irrigate</th><th>When</th><th>Deficit</th><th>Rain</th><th>Temp</th><th>Heat</th></tr></thead>
+          <thead><tr><th>Date</th><th>Irrigate</th><th>When</th><th title="mm below field capacity">Soil deficit</th><th>Rain</th><th>Temp</th><th>Heat</th></tr></thead>
           <tbody id="rows"></tbody>
         </table>
       </div>

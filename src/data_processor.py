@@ -1,4 +1,11 @@
 """Raw Conduit AWS readings (~15 min, UTC) -> daily ET0, water deficit, heat stress."""
+import json
+import os
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import date, timedelta
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -7,6 +14,8 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 RAW_CSV = ROOT / "Data" / "weatherdata.csv"
 OUT_CSV = ROOT / "Data" / "processed_weather.csv"
+ARCHIVE_CSV = ROOT / "Data" / "conduit_archive.csv"  # offline copy of API history (see archive())
+CONDUIT_URL = "https://conduit.jhubafrica.com/data.php"
 
 # JKUAT weather station, Juja, Kenya
 LAT_DEG = -1.09
@@ -29,12 +38,68 @@ def heat_stress_level(temp_max, wbgt_max):
     return "LOW"
 
 
-def load_raw(path=RAW_CSV):
-    df = pd.read_csv(path, parse_dates=["ts"])
-    df["ts"] = df["ts"].dt.tz_convert(TZ)
+def load_dotenv(path=ROOT / ".env"):
+    if path.exists():
+        for line in path.read_text().splitlines():
+            key, sep, val = line.partition("=")
+            if sep and not key.startswith("#"):
+                os.environ.setdefault(key.strip(), val.strip())
+
+
+def _prepare(df):
+    df["ts"] = pd.to_datetime(df["ts"], utc=True).dt.tz_convert(TZ)
     # rg1tt is a cumulative bucket total that resets daily; rain = positive increments.
     # (rg2tt fluctuates up and down every day, so it is not accumulated rain; ignored.)
     df["rain_mm"] = df["rg1tt"].diff().clip(lower=0).fillna(0)
+    return df
+
+
+def load_raw(path=RAW_CSV):
+    return _prepare(pd.read_csv(path))
+
+
+def fetch_conduit(fromdate: date, todate: date) -> pd.DataFrame:
+    """Raw readings (UTC ts, as in the CSV) from the Conduit API. Dates inclusive, max ~1 month apart."""
+    body = urllib.parse.urlencode({
+        "apikey": os.environ["CONDUIT_API_KEY"], "email": os.environ["CONDUIT_EMAIL"],
+        "fromdate": fromdate.isoformat(), "todate": todate.isoformat()}).encode()
+    try:
+        with urllib.request.urlopen(CONDUIT_URL, body, timeout=60) as r:
+            payload = json.load(r)
+    except urllib.error.HTTPError as e:  # errors come back as JSON with a 4xx status
+        payload = json.load(e)
+    if payload.get("status") != "success":
+        raise RuntimeError(f"Conduit API: {payload.get('message')}")
+    df = pd.DataFrame(payload["data"], columns=payload["headers"])
+    num = df.columns.drop("ts")
+    df[num] = df[num].apply(pd.to_numeric, errors="coerce")
+    return df
+
+
+def fetch_range(start: date, end: date, verbose=False) -> pd.DataFrame:
+    """Raw API readings start..end of any length, one request per calendar month."""
+    chunks = []
+    for m in pd.date_range(start.replace(day=1), end, freq="MS").date:
+        first, last = max(m, start), min((pd.Timestamp(m) + pd.offsets.MonthEnd()).date(), end)
+        chunks.append(fetch_conduit(first, last))
+        if verbose:
+            print(f"{first} .. {last}: {len(chunks[-1])} readings")
+    return pd.concat(chunks).drop_duplicates("ts").sort_values("ts").reset_index(drop=True)
+
+
+# ponytail: unbounded-age cache; fine because ranges end >= 2 days ago, so data is final.
+@lru_cache(maxsize=64)
+def fetch_days(start: date, end: date) -> pd.DataFrame:
+    """Processed local (Nairobi) days start..end from the live API. Do not mutate the result."""
+    # Local day D starts at 21:00 UTC on D-1, so fetch one extra UTC day in front.
+    df = process(_prepare(fetch_range(start - timedelta(days=1), end)))
+    return df[df["date"].between(start.isoformat(), end.isoformat())].reset_index(drop=True)
+
+
+def archive(start: date, end: date, out=ARCHIVE_CSV) -> pd.DataFrame:
+    """Save raw API readings start..end to CSV for offline use."""
+    df = fetch_range(start, end, verbose=True)
+    df.to_csv(out, index=False)
     return df
 
 
@@ -104,4 +169,9 @@ def run(path=RAW_CSV, out=OUT_CSV) -> pd.DataFrame:
 
 
 if __name__ == "__main__":
-    print(run().to_string(index=False))
+    import sys
+    if sys.argv[1:2] == ["--archive"]:  # python -m src.data_processor --archive 2025-06-01 2026-09-26
+        load_dotenv()
+        archive(date.fromisoformat(sys.argv[2]), date.fromisoformat(sys.argv[3]))
+    else:
+        print(run().to_string(index=False))

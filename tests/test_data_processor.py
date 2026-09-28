@@ -1,3 +1,4 @@
+import pandas as pd
 import pytest
 
 from src.data_processor import fao56_et0, heat_stress_level, load_raw, process
@@ -43,3 +44,33 @@ def test_et0_rises_with_heat_and_dryness():
                                              (27, 23, "MODERATE"), (33, 20, "HIGH"), (25, 27, "HIGH")])
 def test_heat_stress_level(tmax, wbgt, level):
     assert heat_stress_level(tmax, wbgt) == level
+
+
+def test_fetch_conduit_parses_api_json(monkeypatch):
+    import io
+    import json
+    from datetime import date
+
+    import src.data_processor as dp
+
+    csv = pd.read_csv(dp.RAW_CSV, dtype=str).head(200)
+    payload = {"status": "success", "headers": list(csv.columns), "data": csv.to_dict("records")}
+    monkeypatch.setenv("CONDUIT_API_KEY", "k")
+    monkeypatch.setenv("CONDUIT_EMAIL", "e")
+    monkeypatch.setattr(dp.urllib.request, "urlopen", lambda *a, **k: io.BytesIO(json.dumps(payload).encode()))
+    live = dp._prepare(dp.fetch_conduit(date(2026, 8, 28), date(2026, 8, 30)))
+    pd.testing.assert_frame_equal(live, load_raw().head(200), check_dtype=False)
+
+
+def test_fetch_conduit_raises_on_api_error(monkeypatch):
+    import io
+    from datetime import date
+
+    import src.data_processor as dp
+
+    monkeypatch.setenv("CONDUIT_API_KEY", "k")
+    monkeypatch.setenv("CONDUIT_EMAIL", "e")
+    monkeypatch.setattr(dp.urllib.request, "urlopen",
+                        lambda *a, **k: io.BytesIO(b'{"status":"error","message":"Wrong Email or APIKey"}'))
+    with pytest.raises(RuntimeError, match="Wrong Email"):
+        dp.fetch_conduit(date(2026, 9, 1), date(2026, 9, 2))
