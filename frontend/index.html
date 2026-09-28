@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Shamba Water — JKUAT Irrigation Advisor</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Shamba Water</h1>
+    <p>Irrigation &amp; crop heat stress advisory · JKUAT station, Juja · <span id="asof"></span></p>
+  </header>
+
+  <main>
+    <section class="today" aria-label="Latest day">
+      <div class="advice" id="advice">Loading…</div>
+      <div class="metrics">
+        <div class="metric"><span>Irrigation</span><strong id="m-irr">–</strong></div>
+        <div class="metric"><span>Heat stress</span><strong id="m-heat">–</strong></div>
+        <div class="metric"><span>Rainfall</span><strong id="m-rain">–</strong></div>
+        <div class="metric"><span>Water deficit</span><strong id="m-def">–</strong></div>
+      </div>
+    </section>
+
+    <section>
+      <h2>7-day irrigation schedule</h2>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Date</th><th>Irrigate</th><th>When</th><th>Deficit</th><th>Rain</th><th>Temp</th><th>Heat</th></tr></thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="charts">
+      <figure><figcaption>Temperature (°C)</figcaption><canvas id="temp-chart"></canvas></figure>
+      <figure><figcaption>Evapotranspiration vs rainfall (mm/day)</figcaption><canvas id="water-chart"></canvas></figure>
+    </section>
+  </main>
+
+  <footer>Data: Conduit climate initiative AWS · ET₀ by FAO-56 Penman-Monteith</footer>
+  <script src="app.js"></script>
+</body>
+</html>
